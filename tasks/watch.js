@@ -6,186 +6,213 @@
  * Licensed under the MIT license.
  */
 
-'use strict';
+"use strict";
 
-var path = require('path');
-var Gaze = require('gaze').Gaze;
-var _ = require('lodash');
-var waiting = 'Waiting...';
+var path = require("path");
+var Gaze = require("gaze").Gaze;
+var _ = require("lodash");
+var waiting = "Waiting...";
 var changedFiles = Object.create(null);
 var watchers = [];
 
 module.exports = function(grunt) {
-
-  var taskrun = require('./lib/taskrunner')(grunt);
+  var taskrun = require("./lib/taskrunner")(grunt);
 
   // Default date format logged
   var dateFormat = function(time) {
-    grunt.log.writeln(String(
-      'Completed in ' +
-      time.toFixed(3) +
-      's at ' +
-      (new Date()).toString()
-    ).cyan + ' - ' + waiting);
+    if (grunt.option("verbose")) {
+      grunt.log.writeln(
+        String(
+          "Completed in " + time.toFixed(3) + "s at " + new Date().toString()
+        ).cyan +
+          " - " +
+          waiting
+      );
+    }
   };
 
   // When task runner has started
-  taskrun.on('start', function() {
+  taskrun.on("start", function() {
     Object.keys(changedFiles).forEach(function(filepath) {
       // Log which file has changed, and how.
-      grunt.log.ok('File "' + filepath + '" ' + changedFiles[filepath] + '.');
+      if (grunt.option("verbose")) {
+        grunt.log.ok('File "' + filepath + '" ' + changedFiles[filepath] + ".");
+      }
     });
     // Reset changedFiles
     changedFiles = Object.create(null);
   });
 
   // When task runner has ended
-  taskrun.on('end', function(time) {
+  taskrun.on("end", function(time) {
     if (time > 0) {
       dateFormat(time);
     }
   });
 
   // When a task run has been interrupted
-  taskrun.on('interrupt', function() {
-    grunt.log.writeln('').write('Scheduled tasks have been interrupted...'.yellow);
+  taskrun.on("interrupt", function() {
+    grunt.log
+      .writeln("")
+      .write("Scheduled tasks have been interrupted...".yellow);
   });
 
   // When taskrun is reloaded
-  taskrun.on('reload', function() {
+  taskrun.on("reload", function() {
     taskrun.clearRequireCache(Object.keys(changedFiles));
-    grunt.log.writeln('').writeln('Reloading watch config...'.cyan);
+    grunt.log.writeln("").writeln("Reloading watch config...".cyan);
   });
 
-  grunt.registerTask('watch', 'Run predefined tasks whenever watched files change.', function(target) {
-    var self = this;
-    var name = self.name || 'watch';
+  grunt.registerTask(
+    "watch",
+    "Run predefined tasks whenever watched files change.",
+    function(target) {
+      var self = this;
+      var name = self.name || "watch";
 
-    // Close any previously opened watchers
-    watchers.forEach(function(watcher) {
-      watcher.close();
-    });
-    watchers = [];
+      // Close any previously opened watchers
+      watchers.forEach(function(watcher) {
+        watcher.close();
+      });
+      watchers = [];
 
-    // Never gonna give you up, never gonna let you down
-    if (grunt.config([name, 'options', 'forever']) !== false) {
-      taskrun.forever();
-    }
-
-    // If a custom dateFormat function
-    var df = grunt.config([name, 'options', 'dateFormat']);
-    if (typeof df === 'function') {
-      dateFormat = df;
-    }
-
-    if (taskrun.running === false) {
-      grunt.log.writeln(waiting);
-    }
-
-    // Initialize taskrun
-    var targets = taskrun.init(name, {target: target});
-
-    targets.forEach(function(target) {
-      if (typeof target.files === 'string') {
-        target.files = [target.files];
+      // Never gonna give you up, never gonna let you down
+      if (grunt.config([name, "options", "forever"]) !== false) {
+        taskrun.forever();
       }
 
-      // Process into raw patterns
-      var patterns = _.chain(target.files).flatten().map(function(pattern) {
-        return grunt.config.process(pattern);
-      }).value();
-
-      // Validate the event option
-      if (typeof target.options.event === 'string') {
-        target.options.event = [target.options.event];
+      // If a custom dateFormat function
+      var df = grunt.config([name, "options", "dateFormat"]);
+      if (typeof df === "function") {
+        dateFormat = df;
       }
 
-      var eventCwd = process.cwd();
-      if (target.options.cwd && target.options.cwd.event) {
-        eventCwd = target.options.cwd.event;
+      if (taskrun.running === false) {
+        grunt.log.writeln(waiting);
       }
 
-      // Set cwd if options.cwd.file is set
-      if (typeof target.options.cwd !== 'string' && target.options.cwd.files) {
-        target.options.cwd = target.options.cwd.files;
-      }
+      // Initialize taskrun
+      var targets = taskrun.init(name, { target: target });
 
-      // Create watcher per target
-      watchers.push(new Gaze(patterns, target.options, function(err) {
-        if (err) {
-          if (typeof err === 'string') {
-            err = new Error(err);
-          }
-          grunt.log.writeln('ERROR'.red);
-          grunt.fatal(err);
-          return taskrun.done();
+      targets.forEach(function(target) {
+        if (typeof target.files === "string") {
+          target.files = [target.files];
         }
 
-        // Log all watched files with --verbose set
-        if (grunt.option('verbose')) {
-          var watched = this.watched();
-          Object.keys(watched).forEach(function(watchedDir) {
-            watched[watchedDir].forEach(function(watchedFile) {
-              grunt.log.writeln('Watching ' + path.relative(process.cwd(), watchedFile) + ' for changes.');
-            });
-          });
+        // Process into raw patterns
+        var patterns = _.chain(target.files)
+          .flatten()
+          .map(function(pattern) {
+            return grunt.config.process(pattern);
+          })
+          .value();
+
+        // Validate the event option
+        if (typeof target.options.event === "string") {
+          target.options.event = [target.options.event];
         }
 
-        // On changed/added/deleted
-        this.on('all', function(status, filepath) {
+        var eventCwd = process.cwd();
+        if (target.options.cwd && target.options.cwd.event) {
+          eventCwd = target.options.cwd.event;
+        }
 
-          // Skip events not specified
-          if (!_.includes(target.options.event, 'all') &&
-              !_.includes(target.options.event, status)) {
-            return;
-          }
+        // Set cwd if options.cwd.file is set
+        if (
+          typeof target.options.cwd !== "string" &&
+          target.options.cwd.files
+        ) {
+          target.options.cwd = target.options.cwd.files;
+        }
 
-          filepath = path.relative(eventCwd, filepath);
-
-          // Skip empty filepaths
-          if (filepath === '') {
-            return;
-          }
-
-          // If Gruntfile.js changed, reload self task
-          if (target.options.reload || /gruntfile\.(js|coffee)/i.test(filepath)) {
-            taskrun.reload = true;
-          }
-
-          // Emit watch events if anyone is listening
-          if (grunt.event.listeners('watch').length > 0) {
-            grunt.event.emit('watch', status, filepath, target.name);
-          }
-
-          // Group changed files only for display
-          changedFiles[filepath] = status;
-
-          // Add changed files to the target
-          if (taskrun.targets[target.name]) {
-            if (!taskrun.targets[target.name].changedFiles) {
-              taskrun.targets[target.name].changedFiles = Object.create(null);
+        // Create watcher per target
+        watchers.push(
+          new Gaze(patterns, target.options, function(err) {
+            if (err) {
+              if (typeof err === "string") {
+                err = new Error(err);
+              }
+              grunt.log.writeln("ERROR".red);
+              grunt.fatal(err);
+              return taskrun.done();
             }
-            taskrun.targets[target.name].changedFiles[filepath] = status;
-          }
 
-          // Queue the target
-          if (taskrun.queue.indexOf(target.name) === -1) {
-            taskrun.queue.push(target.name);
-          }
+            // Log all watched files with --verbose set
+            if (grunt.option("verbose")) {
+              var watched = this.watched();
+              Object.keys(watched).forEach(function(watchedDir) {
+                watched[watchedDir].forEach(function(watchedFile) {
+                  grunt.log.writeln(
+                    "Watching " +
+                      path.relative(process.cwd(), watchedFile) +
+                      " for changes."
+                  );
+                });
+              });
+            }
 
-          // Run the tasks
-          taskrun.run();
-        });
+            // On changed/added/deleted
+            this.on("all", function(status, filepath) {
+              // Skip events not specified
+              if (
+                !_.includes(target.options.event, "all") &&
+                !_.includes(target.options.event, status)
+              ) {
+                return;
+              }
 
-        // On watcher error
-        this.on('error', function(err) {
-          if (typeof err === 'string') {
-            err = new Error(err);
-          }
-          grunt.log.error(err.message);
-        });
-      }));
-    });
+              filepath = path.relative(eventCwd, filepath);
 
-  });
+              // Skip empty filepaths
+              if (filepath === "") {
+                return;
+              }
+
+              // If Gruntfile.js changed, reload self task
+              if (
+                target.options.reload ||
+                /gruntfile\.(js|coffee)/i.test(filepath)
+              ) {
+                taskrun.reload = true;
+              }
+
+              // Emit watch events if anyone is listening
+              if (grunt.event.listeners("watch").length > 0) {
+                grunt.event.emit("watch", status, filepath, target.name);
+              }
+
+              // Group changed files only for display
+              changedFiles[filepath] = status;
+
+              // Add changed files to the target
+              if (taskrun.targets[target.name]) {
+                if (!taskrun.targets[target.name].changedFiles) {
+                  taskrun.targets[target.name].changedFiles = Object.create(
+                    null
+                  );
+                }
+                taskrun.targets[target.name].changedFiles[filepath] = status;
+              }
+
+              // Queue the target
+              if (taskrun.queue.indexOf(target.name) === -1) {
+                taskrun.queue.push(target.name);
+              }
+
+              // Run the tasks
+              taskrun.run();
+            });
+
+            // On watcher error
+            this.on("error", function(err) {
+              if (typeof err === "string") {
+                err = new Error(err);
+              }
+              grunt.log.error(err.message);
+            });
+          })
+        );
+      });
+    }
+  );
 };
